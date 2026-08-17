@@ -1,0 +1,296 @@
+{{define "index.html"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>modship — Minecraft Server Deployer</title>
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #252936;
+      --border: #2e3344;
+      --text: #e4e7ee;
+      --text-dim: #8b92a7;
+      --accent: #6c8eef;
+      --accent-hover: #8aa5f5;
+      --green: #5fb878;
+      --red: #e06c75;
+      --orange: #d19a66;
+      --radius: 8px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 2rem;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    h1 { font-size: 1.8rem; margin-bottom: 0.25rem; }
+    h2 { font-size: 1.2rem; margin-bottom: 1rem; color: var(--text-dim); font-weight: 500; }
+    .header { margin-bottom: 2rem; }
+    .header p { color: var(--text-dim); }
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .panel-title {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      margin-bottom: 1rem;
+    }
+    .form-row { display: flex; gap: 0.75rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+    input, select, button {
+      font-family: inherit;
+      font-size: 0.9rem;
+      padding: 0.5rem 0.75rem;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+    }
+    input:focus, select:focus { outline: none; border-color: var(--accent); }
+    input[type="text"] { flex: 1; min-width: 200px; }
+    button {
+      cursor: pointer;
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+      font-weight: 500;
+      transition: background 0.15s;
+    }
+    button:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+    button.secondary { background: var(--surface2); border-color: var(--border); color: var(--text); }
+    button.secondary:hover { background: var(--border); }
+    button.danger { background: var(--red); border-color: var(--red); }
+    button.danger:hover { opacity: 0.85; }
+    button.small { padding: 0.3rem 0.6rem; font-size: 0.8rem; }
+    .server-list { display: flex; flex-direction: column; gap: 0.75rem; }
+    .server-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .server-info { flex: 1; }
+    .server-name { font-weight: 600; font-size: 1rem; }
+    .server-meta { font-size: 0.8rem; color: var(--text-dim); margin-top: 0.15rem; }
+    .server-actions { display: flex; gap: 0.5rem; }
+    .badge {
+      display: inline-block;
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .badge-running { background: rgba(95,184,120,0.15); color: var(--green); }
+    .badge-stopped { background: rgba(209,154,102,0.15); color: var(--orange); }
+    .badge-error { background: rgba(224,108,117,0.15); color: var(--red); }
+    .badge-creating { background: rgba(108,142,239,0.15); color: var(--accent); }
+    .search-results { margin-top: 1rem; }
+    .modpack-item {
+      padding: 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 0.5rem;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .modpack-item:hover { border-color: var(--accent); }
+    .modpack-name { font-weight: 600; }
+    .modpack-summary { font-size: 0.8rem; color: var(--text-dim); margin-top: 0.25rem; }
+    .version-item {
+      padding: 0.6rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 0.4rem;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+    }
+    .version-item:hover { border-color: var(--accent); }
+    .version-name { font-weight: 500; }
+    .version-meta { font-size: 0.8rem; color: var(--text-dim); }
+    .empty { color: var(--text-dim); text-align: center; padding: 2rem; }
+    .hidden { display: none; }
+    .mt-1 { margin-top: 0.5rem; }
+    .mt-2 { margin-top: 1rem; }
+    label { font-size: 0.8rem; color: var(--text-dim); display: block; margin-bottom: 0.25rem; }
+    .field { display: flex; flex-direction: column; }
+    .field input, .field select { width: 100%; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>modship</h1>
+    <p>Deploy Minecraft modpack servers with Docker + mc-router + Cloudflare DNS.</p>
+  </div>
+
+  <!-- Deploy panel -->
+  <div class="panel" id="deploy-panel">
+    <div class="panel-title">Deploy New Server</div>
+    <div class="form-row">
+      <select id="provider-select">
+        <option value="curseforge">CurseForge</option>
+        <option value="modrinth">Modrinth</option>
+      </select>
+      <input type="text" id="search-input" placeholder="Search modpacks..." />
+      <button onclick="searchModpacks()">Search</button>
+    </div>
+    <div id="search-results" class="search-results"></div>
+
+    <!-- Version selection (shown after picking a modpack) -->
+    <div id="version-section" class="hidden mt-2">
+      <div class="panel-title">Select Version</div>
+      <div id="version-results"></div>
+    </div>
+
+    <!-- Deploy form (shown after picking a version) -->
+    <div id="deploy-form" class="hidden mt-2">
+      <div class="panel-title">Configure Server</div>
+      <div class="form-row">
+        <div class="field">
+          <label>Server Name</label>
+          <input type="text" id="server-name" placeholder="my-server" />
+        </div>
+        <div class="field">
+          <label>Memory</label>
+          <input type="text" id="server-memory" value="10G" />
+        </div>
+        <div class="field">
+          <label>Java Image</label>
+          <select id="server-java">
+            <option value="java8">java8</option>
+            <option value="java17" selected>java17</option>
+            <option value="java21">java21</option>
+          </select>
+        </div>
+      </div>
+      <div class="mt-1">
+        <button onclick="deployServer()">Deploy</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Server list -->
+  <div class="panel">
+    <div class="panel-title">Deployed Servers</div>
+    <div id="server-list" class="server-list">
+      {{template "server_list" .}}
+    </div>
+  </div>
+
+  <script>
+    let selectedModpack = null;
+    let selectedVersion = null;
+
+    async function searchModpacks() {
+      const q = document.getElementById('search-input').value;
+      const provider = document.getElementById('provider-select').value;
+      if (!q) return;
+      const res = await fetch('/api/search?q=' + encodeURIComponent(q) + '&provider=' + provider);
+      const packs = await res.json();
+      const container = document.getElementById('search-results');
+      if (!packs || packs.length === 0) {
+        container.innerHTML = '<p class="empty">No modpacks found.</p>';
+        return;
+      }
+      container.innerHTML = packs.map(p => `
+        <div class="modpack-item" onclick="selectModpack('${p.slug}', '${p.name}')">
+          <div class="modpack-name">${p.name}</div>
+          <div class="modpack-summary">${p.summary || ''}</div>
+          <div class="version-meta">Downloads: ${p.downloads || 0}</div>
+        </div>
+      `).join('');
+    }
+
+    async function selectModpack(slug, name) {
+      selectedModpack = { slug, name };
+      const provider = document.getElementById('provider-select').value;
+      const res = await fetch('/api/versions?slug=' + encodeURIComponent(slug) + '&provider=' + provider);
+      const versions = await res.json();
+      const container = document.getElementById('version-results');
+      if (!versions || versions.length === 0) {
+        container.innerHTML = '<p class="empty">No versions found.</p>';
+        return;
+      }
+      container.innerHTML = versions.map(v => `
+        <div class="version-item" onclick="selectVersion('${v.id}', '${v.name}', '${v.game_version}')">
+          <span class="version-name">${v.name}</span>
+          <span class="version-meta">${v.game_version || ''}</span>
+        </div>
+      `).join('');
+      document.getElementById('version-section').classList.remove('hidden');
+      document.getElementById('deploy-form').classList.remove('hidden');
+      document.getElementById('server-name').value = slug.replace(/[^a-z0-9]/gi, '-').toLowerCase();
+    }
+
+    function selectVersion(id, name, gameVersion) {
+      selectedVersion = { id, name, game_version: gameVersion };
+      document.getElementById('version-results').querySelectorAll('.version-item').forEach(el => {
+        el.style.borderColor = el.querySelector('.version-name').textContent === name ? 'var(--accent)' : '';
+      });
+    }
+
+    async function deployServer() {
+      const name = document.getElementById('server-name').value;
+      if (!name || !selectedModpack || !selectedVersion) {
+        alert('Select a modpack and version first.');
+        return;
+      }
+      const provider = document.getElementById('provider-select').value;
+      const res = await fetch('/api/servers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name,
+          provider: provider,
+          modpack_slug: selectedModpack.slug,
+          modpack_name: selectedModpack.name,
+          file_id: selectedVersion.id,
+          game_version: selectedVersion.game_version,
+          java_image: document.getElementById('server-java').value,
+          memory: document.getElementById('server-memory').value,
+        }),
+      });
+      if (res.ok) {
+        location.reload();
+      } else {
+        const err = await res.json();
+        alert('Deploy failed: ' + (err.error || 'unknown error'));
+      }
+    }
+
+    async function startServer(id) {
+      await fetch('/api/servers/' + id + '/start', { method: 'POST' });
+      location.reload();
+    }
+
+    async function stopServer(id) {
+      await fetch('/api/servers/' + id + '/stop', { method: 'POST' });
+      location.reload();
+    }
+
+    async function deleteServer(id) {
+      if (!confirm('Delete this server? This removes all data.')) return;
+      await fetch('/api/servers/' + id, { method: 'DELETE' });
+      location.reload();
+    }
+  </script>
+</body>
+</html>
+{{end}}

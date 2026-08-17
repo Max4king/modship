@@ -1,0 +1,25 @@
+{{define "server_list.html"}}
+{{range .Servers}}
+<div class="server-card">
+  <div class="server-info">
+    <div class="server-name">
+      {{.Name}}
+      <span class="badge badge-{{.State}}">{{.State}}</span>
+    </div>
+    <div class="server-meta">
+      {{.ModpackName}} ({{.Provider}}) — MC {{.GameVersion}} — {{.Domain}} — {{.Memory}}
+    </div>
+  </div>
+  <div class="server-actions">
+    {{if eq (printf "%s" .State) "running"}}
+    <button class="small secondary" onclick="stopServer('{{.ID}}')">Stop</button>
+    {{else}}
+    <button class="small" onclick="startServer('{{.ID}}')">Start</button>
+    {{end}}
+    <button class="small danger" onclick="deleteServer('{{.ID}}')">Delete</button>
+  </div>
+</div>
+{{else}}
+<p class="empty">No servers deployed yet. Search for a modpack above to get started.</p>
+{{end}}
+{{end}}

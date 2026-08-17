@@ -1,0 +1,10 @@
+{{define "server_detail.html"}}
+<div class="server-card">
+  <div class="server-info">
+    <div class="server-name">{{.Server.Name}} <span class="badge badge-{{.Server.State}}">{{.Server.State}}</span></div>
+    <div class="server-meta">
+      {{.Server.ModpackName}} ({{.Server.Provider}}) — MC {{.Server.GameVersion}} — {{.Server.Domain}}
+    </div>
+  </div>
+</div>
+{{end}}
