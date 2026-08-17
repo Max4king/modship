@@ -44,6 +44,15 @@ docker run -d --name mc-router \
 
 ### 2. Configure environment
 
+Copy the example `.env` file and fill in your keys:
+
+```bash
+cp .env.example .env
+# Edit .env with your CurseForge API key, Cloudflare token, zone ID, etc.
+```
+
+Alternatively, export them directly:
+
 ```bash
 export CF_API_KEY=your_curseforge_api_key
 export CLOUDFLARE_API_KEY=your_cloudflare_api_token
