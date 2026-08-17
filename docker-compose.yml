@@ -1,0 +1,299 @@
+networks:
+  minecraft-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.18.0.0/16
+
+services:
+  router:
+    image: ghcr.io/itzg/mc-router:latest
+    command: "-debug -in-docker"
+    networks:
+      minecraft-network:
+        ipv4_address: 172.18.0.2
+    environment:
+      # Point domains to the LazyMC proxy on the unique ports defined below
+      MAPPING: |
+        create-delight.max4king.com=create-delight:25565
+        liminal.max4king.com=liminal:25565
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro,Z
+    restart: unless-stopped
+    ports:
+      - "25565:25565"
+        # lazymc:
+        #     image: ghcr.io/joesturge/lazymc-docker-proxy:latest
+        #     networks:
+        #         minecraft-network:
+        #             ipv4_address: 172.18.0.3
+        #     volumes:
+        #         # Needed so it can turn your containers on and off
+        #         - /var/run/docker.sock:/var/run/docker.sock:ro
+        #         # Needed so it can read the whitelist.json files to verify players before waking
+        #         # - ./AghsLab2/data:/server/aghslab2:ro
+        #     restart: unless-stopped
+      # mc-1:
+      #     image: ghcr.io/itzg/minecraft-server:latest
+      #     networks:
+      #         minecraft-network:
+      #             ipv4_address: 172.18.0.10
+      #     tty: true
+      #     stdin_open: true
+      #     environment:
+      #         EULA: "TRUE"
+      #         MEMORY: 10G
+      #         LEVEL: world
+      #         DIFFICULTY: "hard"
+      #         ENABLE_COMMAND_BLOCK: "TRUE"
+      #         SNOOPER_ENABLED: "FALSE"
+      #         ENFORCE_SECURE_PROFILE: "FALSE"
+      #         MODPACK_PLATFORM: "AUTO_CURSEFORGE"
+      #         CF_MODPACK_ZIP: "/data/vanilla-server.zip"
+      #         CF_API_KEY: ${CF_API_KEY}
+      #         CF_SLUG: "custom"
+      #         WHITELIST: |
+      #           Ryan_3311
+      #           AyumiKa
+      #           MeTamTam
+      #         MAX_TICK_TIME: -1
+      #     # Set restart to unless-stopped so lazymc can manage it properly
+      #     ports:
+      #        - "25565:25565/tcp"
+      #        - "19132:19132/udp"
+      #     restart: always
+      #     volumes:
+      #         - ./mc-1:/data
+
+  create-delight:
+    image: ghcr.io/itzg/minecraft-server:java17
+    networks:
+      minecraft-network:
+        ipv4_address: 172.18.0.4
+    labels:
+      - lazymc.enabled=true
+    tty: true
+    stdin_open: true
+    environment:
+      EULA: "TRUE"
+      MEMORY: 10G
+      VERSION: "1.20.1"
+      LEVEL: world
+      ENABLE_COMMAND_BLOCK: "TRUE"
+      SNOOPER_ENABLED: "FALSE"
+      MODPACK_PLATFORM: "MODRINTH"
+      MODRINTH_MODPACK: "/data/Create With Delight 2.mrpack"
+      WHITELIST: |
+        Ryan_3311
+        AyumiKa
+        MeTamTam
+      MAX_TICK_TIME: -1
+      MODRINTH_EXCLUDE_FILES: freecam
+    # Set restart to unless-stopped so lazymc can manage it properly
+    restart: always
+    volumes:
+      - ./create-delight2:/data
+
+  liminal:
+    image: ghcr.io/itzg/minecraft-server:java17
+    networks:
+      minecraft-network:
+        ipv4_address: 172.18.0.5
+    tty: true
+    stdin_open: true
+    environment:
+      EULA: "TRUE"
+      MEMORY: 10G
+      VERSION: "1.20.1"
+      LEVEL: world
+      ENABLE_COMMAND_BLOCK: "TRUE"
+      SNOOPER_ENABLED: "FALSE"
+      CF_API_KEY: ${CF_API_KEY}
+      MODPACK_PLATFORM: AUTO_CURSEFORGE
+      CF_SLUG: "liminal-industries"
+      CF_FILE_ID: "7397248"
+      WHITELIST: |
+        Ryan_3311
+        AyumiKa
+        MeTamTam
+      MAX_TICK_TIME: -1
+    # Set restart to unless-stopped so lazymc can manage it properly
+    restart: always
+    volumes:
+      - ./liminal:/data
+        # AghsLab2:
+        #     image: ghcr.io/itzg/minecraft-server:latest
+        #     networks:
+        #         minecraft-network:
+        #             ipv4_address: 172.18.0.5
+        #     labels:
+        #         - lazymc.enabled=true
+        #         - lazymc.group=aghslab2
+        #         - lazymc.server.address=AghsLab2:25565
+        #         - lazymc.port=25571 # Unique port for router mapping
+        #         - lazymc.server.directory=/server/aghslab2 # Matches the volume mounted in lazymc service
+        #         - lazymc.time.sleep_after=600 # 10 minutes
+        #         - lazymc.time.minimum_online_time=600
+        #         - lazymc.join.hold.timeout=240
+        #         - lazymc.server.wake_whitelist=true
+        #     tty: true
+        #     stdin_open: true
+        #     environment:
+        #         EULA: "TRUE"
+        #         MEMORY: 8G
+        #         VERSION: "1.21.1"
+        #         LEVEL: world
+        #         ENABLE_COMMAND_BLOCK: "TRUE"
+        #         SNOOPER_ENABLED: "FALSE"
+        #         PVP: "FALSE"
+        #         WHITELIST: |
+        #           Ryan_3311
+        #           AyumiKa
+        #           MeTamTam
+        #         MAX_TICK_TIME: -1
+        #     # Set restart to unless-stopped so lazymc can manage it properly
+        #     restart: unless-stopped
+        #     volumes:
+        #         - ./AghsLab2/data:/data
+
+        # dungeonHero:
+        #     image: ghcr.io/itzg/minecraft-server:java21
+        #     networks:
+        #         minecraft-network:
+        #             ipv4_address: 172.18.0.11
+        #     tty: true
+        #     stdin_open: true
+        #     environment:
+        #         EULA: "TRUE"
+        #         MEMORY: 10G
+        #         ALLOW_FLIGHT: "TRUE"
+        #         ENABLE_COMMAND_BLOCK: "TRUE"
+        #         DIFFICULTY: "normal"
+        #         LEVEL: world
+        #         SNOOPER_ENABLED: "FALSE"
+        #         CF_API_KEY: ${CF_API_KEY}
+        #         MODPACK_PLATFORM: AUTO_CURSEFORGE
+        #         CF_SLUG: "dungeon-heroes"
+        #         CF_FILE_ID: "7790384"
+        #           # CF_FORCE_SYNCHRONIZE: "TRUE"
+        #           # CF_EXCLUDE_MODS:
+        #         WHITELIST: |
+        #           Ryan_3311
+        #           AyumiKa
+        #           MeTamTam
+        #         MAX_TICK_TIME: -1
+        #     restart: unless-stopped
+        #     volumes:
+        #         - ./dungeonHero:/data
+
+        # nightfallcraft2:
+        #     image: ghcr.io/itzg/minecraft-server:java17
+        #     networks:
+        #         minecraft-network:
+        #             ipv4_address: 172.18.0.12
+        #     # labels:
+        #     #     - lazymc.enabled=true
+        #     #     - lazymc.group=nightfallcraft
+        #     #     - lazymc.server.address=nightfallcraft:25565
+        #     #     - lazymc.port=25570 # Unique port for router mapping
+        #     #     - lazymc.server.directory=/server/nightfallcraft
+        #     #     - lazymc.time.sleep_after=600
+        #     #     - lazymc.time.minimum_online_time=600
+        #     #     - lazymc.join.hold.timeout=900
+        #     #     - lazymc.server.wake_whitelist=true
+        #     tty: true
+        #     stdin_open: true
+        #     environment:
+        #         EULA: "TRUE"
+        #         MEMORY: 10G
+        #         ALLOW_FLIGHT: "TRUE"
+        #         ENABLE_COMMAND_BLOCK: "TRUE"
+        #         DIFFICULTY: "normal"
+        #         LEVEL: world
+        #         SNOOPER_ENABLED: "FALSE"
+        #         CF_API_KEY: ${CF_API_KEY}
+        #         MODPACK_PLATFORM: AUTO_CURSEFORGE
+        #         CF_SLUG: "nightfallcraft-the-casket-of-reveries"
+        #         CF_FILE_ID: "7902508"
+        #         CF_FORCE_SYNCHRONIZE: "TRUE"
+        #         CF_EXCLUDE_MODS: |
+        #           clear-water
+        #           chat-plus
+        #           aaa-particles
+        #         WHITELIST: |
+        #           Ryan_3311
+        #           AyumiKa
+        #           MeTamTam
+        #         MAX_TICK_TIME: -1
+        #     restart: unless-stopped
+        #     volumes:
+        #         - ./nightfallcraft2:/data
+
+        # beyondascension:
+        #     image: ghcr.io/itzg/minecraft-server:java17
+        #     networks:
+        #         minecraft-network:
+        #             ipv4_address: 172.18.0.13
+        #     tty: true
+        #     stdin_open: true
+        #     environment:
+        #         EULA: "TRUE"
+        #         MEMORY: 10G
+        #         ALLOW_FLIGHT: "TRUE"
+        #         ENABLE_COMMAND_BLOCK: "TRUE"
+        #         DIFFICULTY: "hard"
+        #         LEVEL: world
+        #         SNOOPER_ENABLED: "FALSE"
+        #         CF_API_KEY: ${CF_API_KEY}
+        #         MODPACK_PLATFORM: AUTO_CURSEFORGE
+        #         CF_SLUG: "beyond-ascension"
+        #         CF_FILE_ID: "7924029"
+        #         CURSEFORGE_FILES: |
+        #           item-obliterator
+        #           the-shattered-goddess-mokels-bossfight-saphyra
+        #           epic-fight-more-skill-slots
+        #         CF_EXCLUDE_MODS: |
+        #           aaa-particles
+        #           immersive-damage-indicators
+        #           epic-tweaks
+        #           epicfight-zylob
+        #         WHITELIST: |
+        #           Ryan_3311
+        #           AyumiKa
+        #           MeTamTam
+        #         MAX_TICK_TIME: -1
+        #     restart: unless-stopped
+        #     volumes:
+        #         - ./beyondascension:/data
+
+        # darkrpg:
+        #     image: ghcr.io/itzg/minecraft-server:java17
+        #     networks:
+        #         minecraft-network:
+        #             ipv4_address: 172.18.0.15
+        #     tty: true
+        #     stdin_open: true
+        #     environment:
+        #         EULA: "TRUE"
+        #         MEMORY: 10G
+        #         ALLOW_FLIGHT: "TRUE"
+        #         ENABLE_COMMAND_BLOCK: "TRUE"
+        #         DIFFICULTY: "hard"
+        #         LEVEL: world
+        #         SNOOPER_ENABLED: "FALSE"
+        #         CF_API_KEY: ${CF_API_KEY}
+        #         MODPACK_PLATFORM: AUTO_CURSEFORGE
+        #         CF_SLUG: "darkrpg-forge"
+        #         CF_FILE_ID: "7984986"
+        #         CURSEFORGE_FILES: |
+        #           epic-fight-more-skill-slots
+        #         CF_EXCLUDE_MODS: |
+        #           aaa-particles
+        #         WHITELIST: |
+        #           Ryan_3311
+        #           AyumiKa
+        #           MeTamTam
+        #         MAX_TICK_TIME: -1
+        #     restart: unless-stopped
+        #     volumes:
+        #         - ./darkrpg:/data

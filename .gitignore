@@ -1,0 +1,28 @@
+# BEGIN oh-my-opencode-slim worktrees
+.slim/worktrees/
+.slim/worktrees.json
+# END oh-my-opencode-slim worktrees
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+/bin/
+/modship
+
+# Deployments (generated at runtime)
+/deployments/
+
+# Environment
+.env
+.env.local
+
+# SQLite
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
