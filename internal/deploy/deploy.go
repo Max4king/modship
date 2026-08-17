@@ -10,12 +10,15 @@ import (
 	"path/filepath"
 	"strings"
 
+	"go.uber.org/zap"
+
 	"github.com/google/uuid"
-	"github.com/ryan3311/modship/internal/compose"
-	"github.com/ryan3311/modship/internal/model"
-	"github.com/ryan3311/modship/internal/store"
 	"github.com/ryan3311/modship/internal/cloudflare"
+	"github.com/ryan3311/modship/internal/compose"
+	"github.com/ryan3311/modship/internal/logging"
+	"github.com/ryan3311/modship/internal/model"
 	"github.com/ryan3311/modship/internal/router"
+	"github.com/ryan3311/modship/internal/store"
 )
 
 // Manager coordinates the deployment lifecycle for minecraft servers.
@@ -118,14 +121,14 @@ func (m *Manager) Deploy(ctx context.Context, req *DeployRequest) (*model.Server
 	backend := fmt.Sprintf("%s:25565", req.Name)
 	if err := m.router.AddRoute(ctx, domain, backend); err != nil {
 		// Non-fatal: server is running, just not routable.
-		fmt.Fprintf(os.Stderr, "warn: router add route: %v\n", err)
+		logging.L.Warn("router add route failed", zap.Error(err))
 	}
 
 	// 5. Create Cloudflare DNS record.
 	if m.hostIP != "" && m.cloudflare != nil {
 		recordID, err := m.cloudflare.EnsureRecord(ctx, domain, m.hostIP)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "warn: cloudflare create record: %v\n", err)
+			logging.L.Warn("cloudflare create record failed", zap.Error(err))
 		} else {
 			srv.CloudflareRecordID = recordID
 		}
@@ -136,11 +139,13 @@ func (m *Manager) Deploy(ctx context.Context, req *DeployRequest) (*model.Server
 		return nil, fmt.Errorf("deploy: update server state: %w", err)
 	}
 
+	logging.L.Info("server deployed", zap.String("name", req.Name), zap.String("domain", domain))
 	return srv, nil
 }
 
 // Start starts a stopped server.
 func (m *Manager) Start(ctx context.Context, id string) error {
+	logging.L.Info("server starting", zap.String("id", id))
 	srv, err := m.store.GetServer(ctx, id)
 	if err != nil {
 		return fmt.Errorf("start: get server: %w", err)
@@ -155,6 +160,7 @@ func (m *Manager) Start(ctx context.Context, id string) error {
 
 // Stop stops a running server without removing it.
 func (m *Manager) Stop(ctx context.Context, id string) error {
+	logging.L.Info("server stopping", zap.String("id", id))
 	srv, err := m.store.GetServer(ctx, id)
 	if err != nil {
 		return fmt.Errorf("stop: get server: %w", err)
@@ -170,6 +176,7 @@ func (m *Manager) Stop(ctx context.Context, id string) error {
 // Delete removes a server entirely: stops containers, removes route,
 // deletes DNS record, removes files, deletes DB row.
 func (m *Manager) Delete(ctx context.Context, id string) error {
+	logging.L.Info("server deleting", zap.String("id", id))
 	srv, err := m.store.GetServer(ctx, id)
 	if err != nil {
 		return fmt.Errorf("delete: get server: %w", err)
@@ -186,14 +193,14 @@ func (m *Manager) Delete(ctx context.Context, id string) error {
 	// 2. Remove mc-router mapping.
 	if srv.Domain != "" {
 		if err := m.router.RemoveRoute(ctx, srv.Domain); err != nil {
-			fmt.Fprintf(os.Stderr, "warn: router remove route: %v\n", err)
+			logging.L.Warn("router remove route failed", zap.Error(err))
 		}
 	}
 
 	// 3. Delete Cloudflare DNS record.
 	if srv.CloudflareRecordID != "" && m.cloudflare != nil {
 		if err := m.cloudflare.DeleteRecord(ctx, srv.CloudflareRecordID); err != nil {
-			fmt.Fprintf(os.Stderr, "warn: cloudflare delete record: %v\n", err)
+			logging.L.Warn("cloudflare delete record failed", zap.Error(err))
 		}
 	}
 

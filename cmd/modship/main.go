@@ -9,10 +9,13 @@ import (
 	"os/signal"
 	"syscall"
 
+	"go.uber.org/zap"
+
 	"github.com/ryan3311/modship/internal/cloudflare"
 	"github.com/ryan3311/modship/internal/compose"
 	"github.com/ryan3311/modship/internal/config"
 	"github.com/ryan3311/modship/internal/deploy"
+	"github.com/ryan3311/modship/internal/logging"
 	"github.com/ryan3311/modship/internal/provider"
 	"github.com/ryan3311/modship/internal/provider/curseforge"
 	"github.com/ryan3311/modship/internal/provider/modrinth"
@@ -26,11 +29,21 @@ func main() {
 	defer cancel()
 
 	if err := run(ctx); err != nil {
-		log.Fatalf("modship: %v", err)
+		if logging.L != nil {
+			logging.L.Error("fatal", zap.Error(err))
+		} else {
+			log.Fatal(err)
+		}
+		os.Exit(1)
 	}
 }
 
 func run(ctx context.Context) error {
+	if err := logging.Init(true); err != nil {
+		log.Fatalf("init logger: %v", err)
+	}
+	defer logging.Sync()
+
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
@@ -73,13 +86,13 @@ func run(ctx context.Context) error {
 
 	// Start HTTP server in background.
 	go func() {
-		log.Printf("modship listening on %s", cfg.ListenAddr)
+		logging.L.Info("server starting", zap.String("addr", cfg.ListenAddr))
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("http server error: %v", err)
+			logging.L.Error("http server error", zap.Error(err))
 		}
 	}()
 
 	<-ctx.Done()
-	log.Println("modship shutting down...")
+	logging.L.Info("shutting down")
 	return httpServer.Shutdown(context.Background())
 }
