@@ -84,6 +84,14 @@ func run(ctx context.Context) error {
 		Handler: srv.Handler(),
 	}
 
+	// Print a clickable URL for convenience.
+	// Most terminals auto-detect http:// links in plain text output.
+	host := cfg.ListenAddr
+	if host[0] == ':' {
+		host = "localhost" + host
+	}
+	fmt.Printf("modship listening on http://%s\n", host)
+
 	// Start HTTP server in background.
 	go func() {
 		logging.L.Info("server starting", zap.String("addr", cfg.ListenAddr))
