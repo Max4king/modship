@@ -198,45 +198,68 @@
     let selectedModpack = null;
     let selectedVersion = null;
 
+    function showError(containerId, msg) {
+      const el = document.getElementById(containerId);
+      if (el) el.innerHTML = '<p class="empty" style="color:var(--red)">' + msg + '</p>';
+    }
+
     async function searchModpacks() {
       const q = document.getElementById('search-input').value;
       const provider = document.getElementById('provider-select').value;
       if (!q) return;
-      const res = await fetch('/api/search?q=' + encodeURIComponent(q) + '&provider=' + provider);
-      const packs = await res.json();
       const container = document.getElementById('search-results');
-      if (!packs || packs.length === 0) {
-        container.innerHTML = '<p class="empty">No modpacks found.</p>';
-        return;
+      container.innerHTML = '<p class="empty">Searching...</p>';
+      try {
+        const res = await fetch('/api/search?q=' + encodeURIComponent(q) + '&provider=' + provider);
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          showError('search-results', data.error || ('HTTP ' + res.status));
+          return;
+        }
+        if (!Array.isArray(data) || data.length === 0) {
+          container.innerHTML = '<p class="empty">No modpacks found.</p>';
+          return;
+        }
+        container.innerHTML = data.map(p => `
+          <div class="modpack-item" onclick="selectModpack('${p.slug}', '${p.name}')">
+            <div class="modpack-name">${p.name}</div>
+            <div class="modpack-summary">${p.summary || ''}</div>
+            <div class="version-meta">Downloads: ${p.downloads || 0}</div>
+          </div>
+        `).join('');
+      } catch (err) {
+        showError('search-results', 'Request failed: ' + err.message);
       }
-      container.innerHTML = packs.map(p => `
-        <div class="modpack-item" onclick="selectModpack('${p.slug}', '${p.name}')">
-          <div class="modpack-name">${p.name}</div>
-          <div class="modpack-summary">${p.summary || ''}</div>
-          <div class="version-meta">Downloads: ${p.downloads || 0}</div>
-        </div>
-      `).join('');
     }
 
     async function selectModpack(slug, name) {
       selectedModpack = { slug, name };
       const provider = document.getElementById('provider-select').value;
-      const res = await fetch('/api/versions?slug=' + encodeURIComponent(slug) + '&provider=' + provider);
-      const versions = await res.json();
       const container = document.getElementById('version-results');
-      if (!versions || versions.length === 0) {
-        container.innerHTML = '<p class="empty">No versions found.</p>';
-        return;
+      container.innerHTML = '<p class="empty">Loading versions...</p>';
+      try {
+        const res = await fetch('/api/versions?slug=' + encodeURIComponent(slug) + '&provider=' + provider);
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          showError('version-results', data.error || ('HTTP ' + res.status));
+          return;
+        }
+        if (!Array.isArray(data) || data.length === 0) {
+          container.innerHTML = '<p class="empty">No versions found.</p>';
+          return;
+        }
+        container.innerHTML = data.map(v => `
+          <div class="version-item" onclick="selectVersion('${v.id}', '${v.name}', '${v.game_version}')">
+            <span class="version-name">${v.name}</span>
+            <span class="version-meta">${v.game_version || ''}</span>
+          </div>
+        `).join('');
+        document.getElementById('version-section').classList.remove('hidden');
+        document.getElementById('deploy-form').classList.remove('hidden');
+        document.getElementById('server-name').value = slug.replace(/[^a-z0-9]/gi, '-').toLowerCase();
+      } catch (err) {
+        showError('version-results', 'Request failed: ' + err.message);
       }
-      container.innerHTML = versions.map(v => `
-        <div class="version-item" onclick="selectVersion('${v.id}', '${v.name}', '${v.game_version}')">
-          <span class="version-name">${v.name}</span>
-          <span class="version-meta">${v.game_version || ''}</span>
-        </div>
-      `).join('');
-      document.getElementById('version-section').classList.remove('hidden');
-      document.getElementById('deploy-form').classList.remove('hidden');
-      document.getElementById('server-name').value = slug.replace(/[^a-z0-9]/gi, '-').toLowerCase();
     }
 
     function selectVersion(id, name, gameVersion) {
@@ -253,41 +276,51 @@
         return;
       }
       const provider = document.getElementById('provider-select').value;
-      const res = await fetch('/api/servers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: name,
-          provider: provider,
-          modpack_slug: selectedModpack.slug,
-          modpack_name: selectedModpack.name,
-          file_id: selectedVersion.id,
-          game_version: selectedVersion.game_version,
-          java_image: document.getElementById('server-java').value,
-          memory: document.getElementById('server-memory').value,
-        }),
-      });
-      if (res.ok) {
-        location.reload();
-      } else {
-        const err = await res.json();
-        alert('Deploy failed: ' + (err.error || 'unknown error'));
+      try {
+        const res = await fetch('/api/servers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: name,
+            provider: provider,
+            modpack_slug: selectedModpack.slug,
+            modpack_name: selectedModpack.name,
+            file_id: selectedVersion.id,
+            game_version: selectedVersion.game_version,
+            java_image: document.getElementById('server-java').value,
+            memory: document.getElementById('server-memory').value,
+          }),
+        });
+        if (res.ok) {
+          location.reload();
+        } else {
+          const err = await res.json();
+          alert('Deploy failed: ' + (err.error || 'unknown error'));
+        }
+      } catch (err) {
+        alert('Deploy failed: ' + err.message);
       }
     }
 
     async function startServer(id) {
-      await fetch('/api/servers/' + id + '/start', { method: 'POST' });
+      try {
+        await fetch('/api/servers/' + id + '/start', { method: 'POST' });
+      } catch (e) { alert('Start failed: ' + e.message); }
       location.reload();
     }
 
     async function stopServer(id) {
-      await fetch('/api/servers/' + id + '/stop', { method: 'POST' });
+      try {
+        await fetch('/api/servers/' + id + '/stop', { method: 'POST' });
+      } catch (e) { alert('Stop failed: ' + e.message); }
       location.reload();
     }
 
     async function deleteServer(id) {
       if (!confirm('Delete this server? This removes all data.')) return;
-      await fetch('/api/servers/' + id, { method: 'DELETE' });
+      try {
+        await fetch('/api/servers/' + id, { method: 'DELETE' });
+      } catch (e) { alert('Delete failed: ' + e.message); }
       location.reload();
     }
   </script>

@@ -96,13 +96,8 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 	p := s.registry.Get(model.Provider(providerName))
 	if p == nil {
-		// Default to first registered provider.
-		all := s.registry.All()
-		if len(all) == 0 {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "no providers registered"})
-			return
-		}
-		p = all[0]
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown provider: " + providerName})
+		return
 	}
 	results, err := p.Search(r.Context(), q)
 	if err != nil {
@@ -122,12 +117,8 @@ func (s *Server) handleVersions(w http.ResponseWriter, r *http.Request) {
 	}
 	p := s.registry.Get(model.Provider(providerName))
 	if p == nil {
-		all := s.registry.All()
-		if len(all) == 0 {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "no providers registered"})
-			return
-		}
-		p = all[0]
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown provider: " + providerName})
+		return
 	}
 	versions, err := p.GetVersions(r.Context(), slug)
 	if err != nil {
