@@ -16,13 +16,17 @@ import (
 
 // mockProvider implements provider.Provider for testing.
 type mockProvider struct {
-	name     model.Provider
-	modpacks []model.Modpack
-	versions []model.Version
+	name           model.Provider
+	modpacks       []model.Modpack
+	versions       []model.Version
+	searchPage     int
+	searchPageSize int
 }
 
 func (m *mockProvider) Name() model.Provider { return m.name }
-func (m *mockProvider) Search(ctx context.Context, q string) ([]model.Modpack, error) {
+func (m *mockProvider) Search(ctx context.Context, q string, page, pageSize int) ([]model.Modpack, error) {
+	m.searchPage = page
+	m.searchPageSize = pageSize
 	return m.modpacks, nil
 }
 func (m *mockProvider) GetVersions(ctx context.Context, slug string) ([]model.Version, error) {
@@ -123,6 +127,55 @@ func TestHandleSearch(t *testing.T) {
 	if results[0].Name != "Test Pack" {
 		t.Errorf("Name = %q, want Test Pack", results[0].Name)
 	}
+}
+
+func TestHandleSearch_Pagination(t *testing.T) {
+	dir := t.TempDir()
+	s, err := store.Open(context.Background(), filepath.Join(dir, "test.db"))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	mp := &mockProvider{
+		name: model.ProviderModrinth,
+		modpacks: []model.Modpack{
+			{ID: "p1", Name: "Test Pack", Slug: "test-pack", Provider: model.ProviderModrinth},
+		},
+	}
+	reg := provider.NewRegistry()
+	reg.Register(mp)
+	srv := New(s, reg, nil)
+
+	t.Run("explicit page and pageSize are passed through", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/search?q=test&provider=modrinth&page=1&pageSize=5", nil)
+		rec := httptest.NewRecorder()
+		srv.router.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+		if mp.searchPage != 1 {
+			t.Errorf("page = %d, want 1", mp.searchPage)
+		}
+		if mp.searchPageSize != 5 {
+			t.Errorf("pageSize = %d, want 5", mp.searchPageSize)
+		}
+	})
+
+	t.Run("defaults to page 0 and pageSize 10", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/search?q=test&provider=modrinth", nil)
+		rec := httptest.NewRecorder()
+		srv.router.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+		if mp.searchPage != 0 {
+			t.Errorf("page = %d, want 0 (default)", mp.searchPage)
+		}
+		if mp.searchPageSize != 10 {
+			t.Errorf("pageSize = %d, want 10 (default)", mp.searchPageSize)
+		}
+	})
 }
 
 func TestHandleSearch_MissingQuery(t *testing.T) {

@@ -152,6 +152,10 @@
       <button onclick="searchModpacks()">Search</button>
     </div>
     <div id="search-results" class="search-results"></div>
+    <div class="mt-1" style="display:flex; align-items:center; justify-content:space-between;">
+      <span id="result-info" class="hidden" style="font-size:0.8rem; color:var(--text-dim);"></span>
+      <button class="secondary hidden" id="load-more" onclick="loadMore()">Load More</button>
+    </div>
 
     <!-- Version selection (shown after picking a modpack) -->
     <div id="version-section" class="hidden mt-2">
@@ -197,39 +201,93 @@
   <script>
     let selectedModpack = null;
     let selectedVersion = null;
+    let currentSearch = null; // { q, provider } of the active search
+    let currentPage = 0;
+    const pageSize = 10;
 
     function showError(containerId, msg) {
       const el = document.getElementById(containerId);
       if (el) el.innerHTML = '<p class="empty" style="color:var(--red)">' + msg + '</p>';
     }
 
-    async function searchModpacks() {
-      const q = document.getElementById('search-input').value;
-      const provider = document.getElementById('provider-select').value;
-      if (!q) return;
+    function modpackItemHTML(p) {
+      return `
+        <div class="modpack-item" onclick="selectModpack('${p.slug}', '${p.name}')">
+          <div class="modpack-name">${p.name}</div>
+          <div class="modpack-summary">${p.summary || ''}</div>
+          <div class="version-meta">Downloads: ${p.downloads || 0}</div>
+        </div>
+      `;
+    }
+
+    // searchModpacks starts a new search at page 0, or (when called from
+    // loadMore) fetches the next page using the query/provider from the
+    // previous search and appends the results.
+    async function searchModpacks(page = 0) {
       const container = document.getElementById('search-results');
-      container.innerHTML = '<p class="empty">Searching...</p>';
+      const info = document.getElementById('result-info');
+      const loadMoreBtn = document.getElementById('load-more');
+
+      if (page === 0) {
+        const q = document.getElementById('search-input').value;
+        const provider = document.getElementById('provider-select').value;
+        if (!q) return;
+        currentSearch = { q: q, provider: provider };
+        currentPage = 0;
+        container.innerHTML = '<p class="empty">Searching...</p>';
+        info.classList.add('hidden');
+        loadMoreBtn.classList.add('hidden');
+        loadMoreBtn.disabled = false;
+      } else if (!currentSearch) {
+        return;
+      }
+
+      if (page > 0) loadMoreBtn.disabled = true; // guard against double-clicks
       try {
-        const res = await fetch('/api/search?q=' + encodeURIComponent(q) + '&provider=' + provider);
+        const res = await fetch('/api/search?q=' + encodeURIComponent(currentSearch.q) +
+          '&provider=' + currentSearch.provider +
+          '&page=' + page + '&pageSize=' + pageSize);
         const data = await res.json();
         if (!res.ok || data.error) {
           showError('search-results', data.error || ('HTTP ' + res.status));
+          loadMoreBtn.classList.add('hidden');
           return;
         }
-        if (!Array.isArray(data) || data.length === 0) {
+        if (!Array.isArray(data)) data = [];
+        if (page === 0 && data.length === 0) {
           container.innerHTML = '<p class="empty">No modpacks found.</p>';
+          info.classList.add('hidden');
+          loadMoreBtn.classList.add('hidden');
           return;
         }
-        container.innerHTML = data.map(p => `
-          <div class="modpack-item" onclick="selectModpack('${p.slug}', '${p.name}')">
-            <div class="modpack-name">${p.name}</div>
-            <div class="modpack-summary">${p.summary || ''}</div>
-            <div class="version-meta">Downloads: ${p.downloads || 0}</div>
-          </div>
-        `).join('');
+        if (page === 0) {
+          container.innerHTML = data.map(modpackItemHTML).join('');
+        } else {
+          container.innerHTML += data.map(modpackItemHTML).join('');
+        }
+        if (data.length > 0) {
+          const start = page * pageSize + 1;
+          info.textContent = 'Showing results ' + start + '-' + (start + data.length - 1);
+          info.classList.remove('hidden');
+        }
+        // Show "Load More" only if a full page came back (more may exist).
+        if (data.length >= pageSize) {
+          loadMoreBtn.classList.remove('hidden');
+        } else {
+          loadMoreBtn.classList.add('hidden');
+        }
       } catch (err) {
         showError('search-results', 'Request failed: ' + err.message);
+        loadMoreBtn.classList.add('hidden');
+      } finally {
+        if (page > 0) loadMoreBtn.disabled = false;
       }
+    }
+
+    function loadMore() {
+      if (!currentSearch) return;
+      currentPage += 1;
+      searchModpacks(currentPage);
     }
 
     async function selectModpack(slug, name) {

@@ -5,6 +5,7 @@ package curseforge
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -57,12 +58,15 @@ type cfFile struct {
 	ID           int      `json:"id"`
 	DisplayName  string   `json:"displayName"`
 	FileName     string   `json:"fileName"`
-	FileDate      string   `json:"fileDate"`
+	FileDate     string   `json:"fileDate"`
 	DownloadURL  string   `json:"downloadUrl"`
 	GameVersions []string `json:"gameVersions"`
 }
 
 func (p *Provider) do(ctx context.Context, path string, q url.Values) (*http.Response, error) {
+	if p.apiKey == "" {
+		return nil, errors.New("curseforge: API key not set — set CF_API_KEY in your .env file or environment. Get one at https://console.curseforge.com/")
+	}
 	u := apiBase + path
 	if q != nil {
 		u += "?" + q.Encode()
@@ -76,19 +80,46 @@ func (p *Provider) do(ctx context.Context, path string, q url.Values) (*http.Res
 	return p.http.Do(req)
 }
 
-// Search returns modpacks matching the query.
-func (p *Provider) Search(ctx context.Context, query string) ([]model.Modpack, error) {
+// statusError maps a non-2xx response to a user-friendly error, calling out
+// the most common CurseForge authentication failures explicitly.
+func statusError(what string, resp *http.Response) error {
+	switch resp.StatusCode {
+	case http.StatusForbidden:
+		return errors.New("curseforge: API key is invalid or expired (403 Forbidden). Check your CF_API_KEY value. Get one at https://console.curseforge.com/")
+	case http.StatusUnauthorized:
+		return errors.New("curseforge: unauthorized (401) — CF_API_KEY may be missing or invalid")
+	default:
+		return fmt.Errorf("curseforge: %s: %s", what, resp.Status)
+	}
+}
+
+// Search returns modpacks matching the query, sorted by popularity.
+// page is 0-indexed; pageSize is capped at 50 (the CurseForge API limit).
+func (p *Provider) Search(ctx context.Context, query string, page, pageSize int) ([]model.Modpack, error) {
+	if page < 0 {
+		page = 0
+	}
+	if pageSize <= 0 {
+		pageSize = 10
+	}
+	if pageSize > 50 {
+		pageSize = 50
+	}
 	q := url.Values{}
-	q.Set("gameId", "432")       // Minecraft
-	q.Set("classId", "4471")     // Modpacks
+	q.Set("gameId", "432")   // Minecraft
+	q.Set("classId", "4471") // Modpacks
 	q.Set("searchFilter", query)
+	q.Set("sortField", "2") // Total downloads (popularity)
+	q.Set("sortOrder", "desc")
+	q.Set("pageSize", strconv.Itoa(pageSize))
+	q.Set("index", strconv.Itoa(page*pageSize)) // CurseForge uses an offset, not a page number
 	resp, err := p.do(ctx, "/mods/search", q)
 	if err != nil {
-		return nil, fmt.Errorf("curseforge: search %q: %w", query, err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("curseforge: search %q: %s", query, resp.Status)
+		return nil, statusError(fmt.Sprintf("search %q", query), resp)
 	}
 	var r cfResponse[[]cfMod]
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
@@ -119,11 +150,11 @@ func (p *Provider) GetVersions(ctx context.Context, slug string) ([]model.Versio
 	}
 	resp, err := p.do(ctx, fmt.Sprintf("/mods/%d/files", modID), nil)
 	if err != nil {
-		return nil, fmt.Errorf("curseforge: get files for %q: %w", slug, err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("curseforge: get files for %q: %s", slug, resp.Status)
+		return nil, statusError(fmt.Sprintf("get files for %q", slug), resp)
 	}
 	var r cfResponse[[]cfFile]
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
@@ -160,11 +191,11 @@ func (p *Provider) ResolveVersion(ctx context.Context, slug, versionID string) (
 	}
 	resp, err := p.do(ctx, fmt.Sprintf("/mods/%d/files/%d", modID, fileID), nil)
 	if err != nil {
-		return nil, fmt.Errorf("curseforge: get file %s: %w", versionID, err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("curseforge: get file %s: %s", versionID, resp.Status)
+		return nil, statusError(fmt.Sprintf("get file %s", versionID), resp)
 	}
 	var r cfResponse[cfFile]
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
@@ -199,11 +230,11 @@ func (p *Provider) resolveModID(ctx context.Context, slug string) (int, error) {
 	q.Set("slug", slug)
 	resp, err := p.do(ctx, "/mods/search", q)
 	if err != nil {
-		return 0, fmt.Errorf("curseforge: resolve slug %q: %w", slug, err)
+		return 0, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		return 0, fmt.Errorf("curseforge: resolve slug %q: %s", slug, resp.Status)
+		return 0, statusError(fmt.Sprintf("resolve slug %q", slug), resp)
 	}
 	var r cfResponse[[]cfMod]
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {

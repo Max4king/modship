@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/ryan3311/modship/internal/model"
@@ -36,10 +37,14 @@ func TestName(t *testing.T) {
 }
 
 func TestSearch_Success(t *testing.T) {
-	var gotFilter, gotAPIKey string
+	var gotFilter, gotAPIKey, gotSortField, gotSortOrder, gotPageSize, gotIndex string
 	p := newTestProvider(t, func(w http.ResponseWriter, req *http.Request) {
 		gotFilter = req.URL.Query().Get("searchFilter")
 		gotAPIKey = req.Header.Get("x-api-key")
+		gotSortField = req.URL.Query().Get("sortField")
+		gotSortOrder = req.URL.Query().Get("sortOrder")
+		gotPageSize = req.URL.Query().Get("pageSize")
+		gotIndex = req.URL.Query().Get("index")
 		json.NewEncoder(w).Encode(cfResponse[[]cfMod]{
 			Data: []cfMod{
 				{ID: 42, Name: "Test Pack", Slug: "test-pack", Summary: "A test", DownloadCount: 1000,
@@ -49,7 +54,7 @@ func TestSearch_Success(t *testing.T) {
 			},
 		})
 	})
-	results, err := p.Search(context.Background(), "test query")
+	results, err := p.Search(context.Background(), "test query", 0, 10)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -77,15 +82,118 @@ func TestSearch_Success(t *testing.T) {
 	if gotAPIKey != "test-cf-key" {
 		t.Errorf("api key header = %q, want test-cf-key", gotAPIKey)
 	}
+	if gotSortField != "2" {
+		t.Errorf("sortField = %q, want \"2\" (popularity)", gotSortField)
+	}
+	if gotSortOrder != "desc" {
+		t.Errorf("sortOrder = %q, want desc", gotSortOrder)
+	}
+	if gotPageSize != "10" {
+		t.Errorf("pageSize = %q, want 10", gotPageSize)
+	}
+	if gotIndex != "0" {
+		t.Errorf("index = %q, want 0", gotIndex)
+	}
+}
+
+func TestSearch_PaginationParams(t *testing.T) {
+	var gotPageSize, gotIndex string
+	p := newTestProvider(t, func(w http.ResponseWriter, req *http.Request) {
+		gotPageSize = req.URL.Query().Get("pageSize")
+		gotIndex = req.URL.Query().Get("index")
+		json.NewEncoder(w).Encode(cfResponse[[]cfMod]{Data: []cfMod{}})
+	})
+	if _, err := p.Search(context.Background(), "test", 1, 25); err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if gotPageSize != "25" {
+		t.Errorf("pageSize = %q, want 25", gotPageSize)
+	}
+	if gotIndex != "25" {
+		t.Errorf("index = %q, want 25 (page 1 * 25 items)", gotIndex)
+	}
 }
 
 func TestSearch_Error(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	})
-	_, err := p.Search(context.Background(), "test")
+	_, err := p.Search(context.Background(), "test", 0, 10)
 	if err == nil {
-		t.Error("Search should error on 500")
+		t.Fatal("Search should error on 500")
+	}
+	if !strings.Contains(err.Error(), "500 Internal Server Error") {
+		t.Errorf("error should include the status code, got: %s", err.Error())
+	}
+}
+
+func TestSearch_EmptyAPIKey(t *testing.T) {
+	called := false
+	p := New("")
+	p.http = &http.Client{Transport: &mockTransport{handler: func(w http.ResponseWriter, req *http.Request) {
+		called = true
+	}}}
+	_, err := p.Search(context.Background(), "test", 0, 10)
+	if err == nil {
+		t.Fatal("Search should error when API key is empty")
+	}
+	if called {
+		t.Fatal("no API request should be made when API key is empty")
+	}
+	want := "curseforge: API key not set — set CF_API_KEY in your .env file or environment. Get one at https://console.curseforge.com/"
+	if err.Error() != want {
+		t.Errorf("error = %q, want %q", err.Error(), want)
+	}
+}
+
+func TestGetVersions_EmptyAPIKey(t *testing.T) {
+	called := false
+	p := New("")
+	p.http = &http.Client{Transport: &mockTransport{handler: func(w http.ResponseWriter, req *http.Request) {
+		called = true
+	}}}
+	// "42" is a numeric mod ID, so no slug-resolution search is issued;
+	// do() is hit directly on the files endpoint.
+	_, err := p.GetVersions(context.Background(), "42")
+	if err == nil {
+		t.Fatal("GetVersions should error when API key is empty")
+	}
+	if called {
+		t.Fatal("no API request should be made when API key is empty")
+	}
+	want := "curseforge: API key not set — set CF_API_KEY in your .env file or environment. Get one at https://console.curseforge.com/"
+	if err.Error() != want {
+		t.Errorf("error = %q, want %q", err.Error(), want)
+	}
+}
+
+func TestSearch_Forbidden(t *testing.T) {
+	p := New("bad-key")
+	p.http = &http.Client{Transport: &mockTransport{handler: func(w http.ResponseWriter, req *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}}}
+	_, err := p.Search(context.Background(), "test", 0, 10)
+	if err == nil {
+		t.Fatal("Search should error on 403")
+	}
+	want := "curseforge: API key is invalid or expired (403 Forbidden). Check your CF_API_KEY value. Get one at https://console.curseforge.com/"
+	if err.Error() != want {
+		t.Errorf("error = %q, want %q", err.Error(), want)
+	}
+}
+
+func TestSearch_Unauthorized(t *testing.T) {
+	p := New("bad-key")
+	p.http = &http.Client{Transport: &mockTransport{handler: func(w http.ResponseWriter, req *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}}}
+	_, err := p.Search(context.Background(), "test", 0, 10)
+	if err == nil {
+		t.Fatal("Search should error on 401")
+	}
+	want := "curseforge: unauthorized (401) — CF_API_KEY may be missing or invalid"
+	if err.Error() != want {
+		t.Errorf("error = %q, want %q", err.Error(), want)
 	}
 }
 
