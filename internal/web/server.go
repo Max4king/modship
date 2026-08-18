@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -87,6 +88,8 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleSearch proxies a search query to the appropriate provider.
+// It accepts optional page (0-indexed) and pageSize query params, with
+// defaults of page=0 and pageSize=10.
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
 	providerName := r.URL.Query().Get("provider")
@@ -94,12 +97,29 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "query param 'q' is required"})
 		return
 	}
+	page, pageSize := 0, 10
+	if v := r.URL.Query().Get("page"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid 'page' param: must be a non-negative integer"})
+			return
+		}
+		page = n
+	}
+	if v := r.URL.Query().Get("pageSize"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid 'pageSize' param: must be a positive integer"})
+			return
+		}
+		pageSize = n
+	}
 	p := s.registry.Get(model.Provider(providerName))
 	if p == nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown provider: " + providerName})
 		return
 	}
-	results, err := p.Search(r.Context(), q)
+	results, err := p.Search(r.Context(), q, page, pageSize)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return

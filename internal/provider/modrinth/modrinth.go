@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/ryan3311/modship/internal/model"
@@ -34,12 +35,12 @@ func (p *Provider) Name() model.Provider { return model.ProviderModrinth }
 
 // mrSearchHit is a single result from the Modrinth search endpoint.
 type mrSearchHit struct {
-	ProjectID string `json:"project_id"`
-	Title     string `json:"title"`
-	Slug      string `json:"slug"`
+	ProjectID   string `json:"project_id"`
+	Title       string `json:"title"`
+	Slug        string `json:"slug"`
 	Description string `json:"description"`
-	IconURL   string `json:"icon_url"`
-	Downloads int    `json:"downloads"`
+	IconURL     string `json:"icon_url"`
+	Downloads   int    `json:"downloads"`
 }
 
 // mrSearchResponse is the search endpoint response.
@@ -76,11 +77,25 @@ func (p *Provider) do(ctx context.Context, path string, q url.Values) (*http.Res
 	return p.http.Do(req)
 }
 
-// Search returns modpacks matching the query.
-func (p *Provider) Search(ctx context.Context, query string) ([]model.Modpack, error) {
+// Search returns modpacks matching the query, sorted by relevance
+// (Modrinth's default index). page is 0-indexed; pageSize is capped at
+// 100 (the Modrinth API limit).
+func (p *Provider) Search(ctx context.Context, query string, page, pageSize int) ([]model.Modpack, error) {
+	if page < 0 {
+		page = 0
+	}
+	if pageSize <= 0 {
+		pageSize = 10
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
 	q := url.Values{}
 	q.Set("query", query)
 	q.Set("facets", `[["project_type:modpack"]]`)
+	q.Set("index", "relevance")
+	q.Set("limit", strconv.Itoa(pageSize))
+	q.Set("offset", strconv.Itoa(page*pageSize))
 	resp, err := p.do(ctx, "/search", q)
 	if err != nil {
 		return nil, fmt.Errorf("modrinth: search %q: %w", query, err)

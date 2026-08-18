@@ -35,10 +35,13 @@ func TestName(t *testing.T) {
 }
 
 func TestSearch_Success(t *testing.T) {
-	var gotQuery, gotFacets string
+	var gotQuery, gotFacets, gotIndex, gotLimit, gotOffset string
 	p := newTestProvider(t, func(w http.ResponseWriter, req *http.Request) {
 		gotQuery = req.URL.Query().Get("query")
 		gotFacets = req.URL.Query().Get("facets")
+		gotIndex = req.URL.Query().Get("index")
+		gotLimit = req.URL.Query().Get("limit")
+		gotOffset = req.URL.Query().Get("offset")
 		json.NewEncoder(w).Encode(mrSearchResponse{
 			Hits: []mrSearchHit{
 				{ProjectID: "abc123", Title: "Test Pack", Slug: "test-pack",
@@ -46,7 +49,7 @@ func TestSearch_Success(t *testing.T) {
 			},
 		})
 	})
-	results, err := p.Search(context.Background(), "test query")
+	results, err := p.Search(context.Background(), "test query", 0, 10)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -74,13 +77,40 @@ func TestSearch_Success(t *testing.T) {
 	if gotFacets == "" {
 		t.Error("facets should be set for modpack search")
 	}
+	if gotIndex != "relevance" {
+		t.Errorf("index = %q, want relevance", gotIndex)
+	}
+	if gotLimit != "10" {
+		t.Errorf("limit = %q, want 10", gotLimit)
+	}
+	if gotOffset != "0" {
+		t.Errorf("offset = %q, want 0", gotOffset)
+	}
+}
+
+func TestSearch_PaginationParams(t *testing.T) {
+	var gotLimit, gotOffset string
+	p := newTestProvider(t, func(w http.ResponseWriter, req *http.Request) {
+		gotLimit = req.URL.Query().Get("limit")
+		gotOffset = req.URL.Query().Get("offset")
+		json.NewEncoder(w).Encode(mrSearchResponse{Hits: []mrSearchHit{}})
+	})
+	if _, err := p.Search(context.Background(), "test", 2, 10); err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if gotLimit != "10" {
+		t.Errorf("limit = %q, want 10", gotLimit)
+	}
+	if gotOffset != "20" {
+		t.Errorf("offset = %q, want 20 (page 2 * 10 items)", gotOffset)
+	}
 }
 
 func TestSearch_Error(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	})
-	_, err := p.Search(context.Background(), "test")
+	_, err := p.Search(context.Background(), "test", 0, 10)
 	if err == nil {
 		t.Error("Search should error on 500")
 	}
@@ -93,7 +123,7 @@ func TestGetVersions_Success(t *testing.T) {
 		json.NewEncoder(w).Encode([]mrVersion{
 			{ID: "ver-1", Name: "1.0.0", GameVersions: []string{"1.20.1"}, Loaders: []string{"forge"},
 				DatePublished: "2024-01-15T00:00:00Z",
-				Files: []mrFile{{URL: "https://dl.url/file.zip", Filename: "test.mrpack"}}},
+				Files:         []mrFile{{URL: "https://dl.url/file.zip", Filename: "test.mrpack"}}},
 		})
 	})
 	versions, err := p.GetVersions(context.Background(), "test-pack")

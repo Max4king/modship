@@ -15,8 +15,9 @@ type Provider interface {
 	// Name returns the provider identifier (e.g. "curseforge", "modrinth").
 	Name() model.Provider
 
-	// Search returns modpacks matching the query.
-	Search(ctx context.Context, query string) ([]model.Modpack, error)
+	// Search returns modpacks matching the query. page is 0-indexed
+	// (page 0 = first page) and pageSize is the number of items per page.
+	Search(ctx context.Context, query string, page, pageSize int) ([]model.Modpack, error)
 
 	// GetVersions returns all available versions/releases for a modpack slug.
 	GetVersions(ctx context.Context, slug string) ([]model.Version, error)
