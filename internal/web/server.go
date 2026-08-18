@@ -10,9 +10,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ryan3311/modship/internal/deploy"
+	"github.com/ryan3311/modship/internal/logging"
 	"github.com/ryan3311/modship/internal/model"
 	"github.com/ryan3311/modship/internal/provider"
 	"github.com/ryan3311/modship/internal/store"
+	"go.uber.org/zap"
 )
 
 // Server is the HTTP UI server.
@@ -96,11 +98,13 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 	p := s.registry.Get(model.Provider(providerName))
 	if p == nil {
+		logging.L.Warn("unknown provider", zap.String("provider", providerName))
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown provider: " + providerName})
 		return
 	}
 	results, err := p.Search(r.Context(), q)
 	if err != nil {
+		logging.L.Warn("search failed", zap.String("provider", providerName), zap.String("query", q), zap.Error(err))
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
@@ -117,11 +121,13 @@ func (s *Server) handleVersions(w http.ResponseWriter, r *http.Request) {
 	}
 	p := s.registry.Get(model.Provider(providerName))
 	if p == nil {
+		logging.L.Warn("unknown provider", zap.String("provider", providerName))
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown provider: " + providerName})
 		return
 	}
 	versions, err := p.GetVersions(r.Context(), slug)
 	if err != nil {
+		logging.L.Warn("get versions failed", zap.String("provider", providerName), zap.String("slug", slug), zap.Error(err))
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
